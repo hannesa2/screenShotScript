@@ -6,7 +6,8 @@ set -x
 ./git-diff-image/install.sh
 GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
 
-source scripts/lib.sh
+pwd
+source $(dirname $0)/lib.sh
 
 PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
 echo pr=$PR
