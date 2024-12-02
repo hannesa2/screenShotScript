@@ -29,6 +29,11 @@ case $OS in
   *) ;;
 esac
 
+if [ -z "${CLASSIC_TOKEN-}" ]; then
+   echo "Must provide CLASSIC_TOKEN environment variable. Exiting...."
+   exit 1
+fi
+
 echo "=> delete all old comments, starting with Screenshot differs:$emulatorApi"
 
 oldComments=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:'$emulatorApi'.*") | tostring)' | grep "|true" | tr -d "\"" | cut -f1 -d"|")
