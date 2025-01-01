@@ -67,6 +67,24 @@ for f in *.png; do
   fi
 done
 
+echo "===> search for error screenshots in $(pwd)"
+find .. -name "view-op-error-*.png" | while IFS= read -r f; do
+  if [[ ${f} == "../view-op-error-*.png" ]]
+  then
+    echo "no error png found"
+  else
+    echo "Found $f"
+    (( COUNTER++ ))
+
+    newName="$(date +%s).png"
+    mv "${f}" "$newName"
+    echo "==> Uploaded screenshot $newName"
+    curl -i -F "file=@$newName" https://www.mxtracks.info/github
+    echo "==> Add screenshot comment $PR"
+    body="$body <br/>${f}<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
+  fi
+done
+
 if [ ! "$body" == "" ]; then
   curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs:$emulatorApi $COUNTER <br/><br/> $body \" }"
 fi
