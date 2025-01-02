@@ -39,8 +39,15 @@ echo "==> Delete all old comments, starting with 'Screenshot differs:' emulatorA
 oldComments=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:'$emulatorApi'.*") | tostring)' | grep "|true" | tr -d "\"" | cut -f1 -d"|")
 echo "oldComments=$oldComments"
 echo "$oldComments" | while read comment; do
-  echo "==> delete comment=$comment"
-  curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$comment"
+  if [ -z "$comment" ]
+  then
+    # comment is empty
+    echo "==> old comment is empty, there is nothing to do"
+  else
+    # comment is not empty
+    echo "==> delete comment=$comment"
+    curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$comment"
+  fi
 done
 
 pushd $diffFiles
