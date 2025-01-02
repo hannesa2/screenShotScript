@@ -93,4 +93,5 @@ fi
 popd 1>/dev/null
 
 # set error when diffs are there
-[ "$(ls -A $diffFiles)" ] && exit 1 || exit 0
+echo ""
+[ "$(ls -A $diffFiles)" ] && echo "==> force error on diff files" && exit 1 || echo "==> all is fine" && exit 0
