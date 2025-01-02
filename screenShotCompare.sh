@@ -2,7 +2,7 @@
 
 diffFiles=./screenshotDiffs
 mkdir $diffFiles
-set -x
+# set -x
 ./git-diff-image/install.sh
 GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
 
@@ -80,12 +80,13 @@ find .. -name "view-op-error-*.png" | while IFS= read -r f; do
     mv "${f}" "$newName"
     echo "==> Uploaded screenshot $newName"
     curl -i -F "file=@$newName" https://www.mxtracks.info/github
-    echo "==> Add screenshot comment $PR"
+    echo "==> Add error screenshot comment $PR"
     body="$body <br/>${f}<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
   fi
 done
 
 if [ ! "$body" == "" ]; then
+  echo "Post comment: $body"
   curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs:$emulatorApi $COUNTER <br/><br/> $body \" }"
 fi
 
