@@ -34,9 +34,9 @@ if [ -z "${CLASSIC_TOKEN-}" ]; then
    exit 1
 fi
 
-echo "==> Delete all old comments, starting with 'Screenshot differs:emulatorApi=$emulatorApi'"
+echo "==> Delete all old comments, starting with 'Screenshot differs:"
 
-oldComments=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:emulatorApi='$emulatorApi'.*") | tostring)' | grep "|true" | tr -d "\"" | cut -f1 -d"|")
+oldComments=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' | grep "|true" | tr -d "\"" | cut -f1 -d"|")
 echo "oldComments=$oldComments"
 echo "$oldComments" | while read comment; do
   if [ -z "$comment" ]
@@ -95,7 +95,7 @@ done
 if [ ! "$body" == "" ]; then
   echo "==> Post comment to $PR"
   echo "==> body=$body"
-  curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs:emulatorApi=$emulatorApi $COUNTER <br/><br/> $body \" }"
+  curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/> $body \" }"
 fi
 
 popd 1>/dev/null
