@@ -30,8 +30,7 @@ case $OS in
 esac
 
 if [ -z "${CLASSIC_TOKEN-}" ]; then
-   echo "!! Must provide CLASSIC_TOKEN environment variable. Exiting...."
-   exit 1
+   echo "!! You must provide CLASSIC_TOKEN environment variable. Otherwise screenshot compare doesn't work properly"
 fi
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
@@ -95,6 +94,10 @@ done
 if [ ! "$body" == "" ]; then
   echo "==> Post comment to $PR"
   echo "==> body=$body"
+  if [ -z "${CLASSIC_TOKEN-}" ]; then
+     echo "!! You must provide a CLASSIC_TOKEN environment variable. Exiting...."
+     exit 1
+  fi
   curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/> $body \" }"
 fi
 
