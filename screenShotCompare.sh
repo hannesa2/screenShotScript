@@ -98,7 +98,7 @@ if [ ! "$body" == "" ]; then
      echo "!! You must provide a CLASSIC_TOKEN environment variable. Exiting...."
      exit 1
   fi
-  curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/> $body \" }"
+  curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/>setpoint|diff|actual screenshot<br/><br/> $body \" }"
 fi
 
 popd 1>/dev/null
