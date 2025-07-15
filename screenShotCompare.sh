@@ -21,7 +21,7 @@ case $OS in
   'WindowsNT')
     ;;
   'Darwin')
-    brew install jq
+    #brew install jq | echo "Nothing to do with brew"
     ;;
   'SunOS')
     ;;
