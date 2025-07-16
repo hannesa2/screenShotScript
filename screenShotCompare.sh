@@ -2,7 +2,7 @@
 
 diffFiles=./screenshotDiffs
 mkdir $diffFiles
-# set -x
+set -x
 ./git-diff-image/install.sh
 GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
 
@@ -104,5 +104,8 @@ fi
 popd 1>/dev/null
 
 # set error when diffs are there
+echo "ls -la $diffFiles"
+ls -la $diffFiles
+
 echo ""
 [ "$(ls -A $diffFiles)" ] && echo "==> Force error on diff files exists" && exit 1 || echo "==> all is fine" && exit 0
