@@ -73,16 +73,18 @@ for f in *.png; do
     newName="${f}"
     # mv "${f}" "$newName"
     echo "==> Uploaded screenshot $newName"
-    request_cmd="$(curl -i -F "file=@$newName" https://www.mxtracks.info/github -u "$SCREENSHOT_USER:$SCREENSHOT_PASSWORD")"
-    http_status=$(echo "$request_cmd" | grep HTTP |  awk '{print $2}')
+    request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
+    request_result="$(eval "$request_cmd")"
+    http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
     echo "request_cmd=$request_cmd"
-    echo "http_status=$http_status"
-    echo "==> Add screenshot comment $PR"
-    if [ "$http_status" != "200" ]; then
+    if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
       echo "!! Screenshot upload failed for $newName \e[31m$http_status\e[0m"
       body="$body ${f} Upload http_status=<strong>$http_status</strong> <br/><br/>"
       continue
+    else :
+      echo "==> Screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
     fi
+    echo "==> Add screenshot comment $PR"
     body="$body ${f}![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
   fi
 done
