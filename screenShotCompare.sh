@@ -29,8 +29,14 @@ case $OS in
   *) ;;
 esac
 
-if [ -z "${CLASSIC_TOKEN-}" ]; then
-   echo "!! You must provide CLASSIC_TOKEN environment variable. Otherwise screenshot compare doesn't work properly"
+if [ -z "${CLASSIC_TOKEN}" ]; then
+   echo "\e[31m!! You must provide CLASSIC_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
+fi
+if [ -z "${SCREENSHOT_USER}" ]; then
+   echo "\e[31m!! You must provide SCREENSHOT_USER environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
+fi
+if [ -z "${SCREENSHOT_PASSWORD}" ]; then
+   echo "\e[31m!! You must provide SCREENSHOT_PASSWORD environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
 fi
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
@@ -67,7 +73,17 @@ for f in *.png; do
     newName="${f}"
     # mv "${f}" "$newName"
     echo "==> Uploaded screenshot $newName"
-    curl -i -F "file=@$newName" https://www.mxtracks.info/github
+    request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
+    request_result="$(eval "$request_cmd")"
+    http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
+    echo "request_cmd=$request_cmd"
+    if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
+      echo "!! Screenshot upload failed for $newName \e[31m$http_status\e[0m"
+      body="$body ${f} Upload http_status=<strong>$http_status</strong> <br/><br/>"
+      continue
+    else :
+      echo "==> Screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
+    fi
     echo "==> Add screenshot comment $PR"
     body="$body ${f}![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
   fi
@@ -94,8 +110,8 @@ done
 if [ ! "$body" == "" ]; then
   echo "==> Post comment to $PR"
   echo "==> body=$body"
-  if [ -z "${CLASSIC_TOKEN-}" ]; then
-     echo "!! You must provide a CLASSIC_TOKEN environment variable. Exiting...."
+  if [ -z "${CLASSIC_TOKEN}" ]; then
+     echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
      exit 1
   fi
   curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/>setpoint|diff|actual screenshot<br/><br/> $body \" }"
