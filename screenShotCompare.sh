@@ -12,9 +12,9 @@ source $(dirname $0)/lib.sh
 echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
 echo $(echo "$GITHUB_REF_NAME" | sed "s/\// /")
 PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
-echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
+echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME GITHUB_RUN_ID=$GITHUB_RUN_ID"
 
-OS="`uname`"
+OS="$(uname)"
 case $OS in
   'Linux')
     ;;
@@ -75,8 +75,11 @@ for f in *.png; do
     newName="${f}"
     # mv "${f}" "$newName"
     echo "==> Uploaded screenshot $newName"
-    request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
+    request_cmd="curl -i -F job=$GITHUB_RUN_ID -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
     request_result="$(eval "$request_cmd")"
+    echo "request_result=$request_result"
+    new_file=$(echo "$request_result" | grep Location |  awk '{print $2}')
+    echo "new_file=$new_file"
     http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
     echo "request_cmd=$request_cmd"
     if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
