@@ -1,4 +1,5 @@
 #!/bin/zsh
+set -eo pipefail # automatic. fails on any error
 
 diffFiles=./screenshotDiffs
 mkdir $diffFiles
