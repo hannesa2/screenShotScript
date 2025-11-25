@@ -43,32 +43,32 @@ if [ -z "${SCREENSHOT_PASSWORD}" ]; then
 fi
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
+oldCommentsJson=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments)
 if [ -n "$DEBUG_INFO" ]; then
   echo "DEBUG_INFO is set and not empty"
-  curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments
+  echo $oldCommentsJson
 else
   echo "DEBUG_INFO is unset or empty"
 fi
 
 # the last echo fixes a merge to master, because then no such comments exists
-oldCommentsFirst=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
-echo "oldCommentsFirst=$oldCommentsFirst"
-if [ -z "$oldCommentsFirst" ]
+oldCommentsList=$(echo $oldCommentsJson | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
+echo "oldCommentsList=$oldCommentsList"
+if [ -z "$oldCommentsList" ]
 then
-  # comment is empty
-  echo "==> oldCommentsFirst is empty, there is nothing to do"
+  echo "==> oldCommentsList is empty, there is nothing to do"
 else
-  oldComments=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' | grep "|true" | tr -d "\"" | cut -f1 -d"|")
-  echo "oldComments=$oldComments"
-  echo "$oldComments" | while read comment; do
-    if [ -z "$comment" ]
+  oldCommentsFiltered=$(echo $oldCommentsList | grep "|true" | tr -d "\"" | cut -f1 -d"|")
+  echo "oldCommentsFiltered=$oldCommentsFiltered"
+  echo "$oldCommentsFiltered" | while read commentLine; do
+    if [ -z "$commentLine" ]
     then
-      # comment is empty
-      echo "==> old comment is empty, there is nothing to do"
+      # commentLine is empty
+      echo "==> old commentLine is empty, there is nothing to do"
     else
-      # comment is not empty
-      echo "==> delete comment=$comment"
-      curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$comment"
+      # commentLine is not empty
+      echo "==> delete commentLine=$commentLine"
+      curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$commentLine"
     fi
   done
 fi
@@ -79,7 +79,8 @@ body=""
 COUNTER=0
 ls -la
 
-echo "==> Loop on *.png and ignore an error, when no files where found https://unix.stackexchange.com/a/723909/201876"
+# https://unix.stackexchange.com/a/723909/201876
+echo "==> Loop on *.png and ignore an error, when no files where found"
 setopt no_nomatch
 for f in *.png; do
   if [[ ${f} == "*.png" ]]
@@ -104,7 +105,7 @@ for f in *.png; do
     else :
       echo "==> Screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
     fi
-    echo "==> Add screenshot comment $PR"
+    echo "==> Add screenshot commentLine $PR"
     body="$body ${f}![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
   fi
 done
@@ -124,13 +125,13 @@ find .. -name "view-op-error-*.png" | while IFS= read -r f; do
     mv "${f}" "$newName"
     echo "==> Uploaded screenshot $newName"
     curl -i -F "file=@$newName" https://www.mxtracks.info/github
-    echo "==> Add error screenshot comment $PR"
+    echo "==> Add error screenshot commentLine $PR"
     body="$body <br/>${f}<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
   fi
 done
 
 if [ ! "$body" == "" ]; then
-  echo "==> Post comment to $PR"
+  echo "==> Post commentLine to $PR"
   echo "==> body=$body"
   if [ -z "${CLASSIC_TOKEN}" ]; then
      echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
