@@ -78,7 +78,9 @@ for f in *.png; do
   then
     echo "nothing found"
   else
-    (( COUNTER++ ))
+    echo "before COUNTER=$COUNTER"
+    (( COUNTER++ )) || echo "Nothing to do with COUNTER++"
+    echo "after COUNTER=$COUNTER"
 
     newName="${f}"
     # mv "${f}" "$newName"
@@ -106,7 +108,9 @@ find .. -name "view-op-error-*.png" | while IFS= read -r f; do
     echo "no error png found"
   else
     echo "Found $f"
-    (( COUNTER++ ))
+    echo "before COUNTER=$COUNTER"
+    (( COUNTER++ )) || echo "Nothing to do with COUNTER++"
+    echo "after COUNTER=$COUNTER"
 
     newName="$(date +%s).png"
     mv "${f}" "$newName"
