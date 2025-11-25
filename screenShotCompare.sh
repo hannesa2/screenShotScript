@@ -43,6 +43,13 @@ if [ -z "${SCREENSHOT_PASSWORD}" ]; then
 fi
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
+if [ -n "$DEBUG_INFO" ]; then
+  echo "DEBUG_INFO is set and not empty"
+  curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments
+else
+  echo "DEBUG_INFO is unset or empty"
+fi
+
 # the last echo fixes a merge to master, because then no such comments exists
 oldCommentsFirst=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
 echo "oldCommentsFirst=$oldCommentsFirst"
