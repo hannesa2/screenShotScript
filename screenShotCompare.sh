@@ -58,6 +58,8 @@ else
   # the last echo fixes a merge to master, because then no such comments exists
   oldCommentsList=$(echo $oldCommentsJson | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
   echo "oldCommentsList=$oldCommentsList"
+  oldCommentsList=$(echo $oldCommentsList | grep true || echo "") # filter lines containing true
+  echo "oldCommentsList=$oldCommentsList"
   if [ -z "$oldCommentsList" ]
   then
     echo "==> oldCommentsList is empty, there is nothing to do"
