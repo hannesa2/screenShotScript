@@ -18,6 +18,9 @@ echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
 OS="`uname`"
 case $OS in
   'Linux')
+    echo "Fix display on Linux"
+    export DISPLAY=:99
+    sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
     ;;
   'FreeBSD')
     ;;
