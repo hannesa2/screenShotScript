@@ -1,20 +1,6 @@
 #!/bin/zsh
 set -eo pipefail # automatic. fails on any error
 
-diffFiles=./screenshotDiffs
-mkdir $diffFiles
-# set -x
-./git-diff-image/install.sh
-GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
-
-pwd
-source $(dirname $0)/lib.sh
-
-echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
-echo $(echo "$GITHUB_REF_NAME" | sed "s/\// /")
-PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
-echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
-
 OS="`uname`"
 case $OS in
   'Linux')
@@ -34,6 +20,20 @@ case $OS in
   'AIX') ;;
   *) ;;
 esac
+
+diffFiles=./screenshotDiffs
+mkdir $diffFiles
+# set -x
+./git-diff-image/install.sh
+GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
+
+pwd
+source $(dirname $0)/lib.sh
+
+echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+echo $(echo "$GITHUB_REF_NAME" | sed "s/\// /")
+PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
+echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
 
 if [ -z "${CLASSIC_TOKEN}" ]; then
    echo "\e[31m!! You must provide CLASSIC_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
