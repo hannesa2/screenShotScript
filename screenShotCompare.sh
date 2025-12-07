@@ -132,7 +132,7 @@ else
       newName="$(date +%s).png"
       mv "${f}" "$newName"
       echo "==> Upload #$COUNTER screenshot=$newName"
-      curl -i -F "file=@$newName" https://www.mxtracks.info/github
+      curl -i -F "file=@$newName" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD
       echo "==> Add error screenshot commentLine PR=$PR"
       body="$body <br/>${f}<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
     fi
