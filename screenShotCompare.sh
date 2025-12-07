@@ -96,14 +96,15 @@ else
     then
       echo "nothing found"
     else
-      echo "before COUNTER=$COUNTER"
-      (( COUNTER++ )) || echo "Nothing to do with COUNTER++"
-      echo "after COUNTER=$COUNTER"
+      (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
       newName="${f}"
       # mv "${f}" "$newName"
-      echo "==> Uploaded screenshot $newName"
+      echo "==> Uploaded #$COUNTER screenshot=$newName"
       request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
+      if [ -n "$DEBUG_INFO" ]; then
+        echo $$request_cmd
+      fi
       request_result="$(eval "$request_cmd")"
       http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
       echo "request_cmd=$request_cmd"
@@ -114,7 +115,7 @@ else
       else :
         echo "==> Screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
       fi
-      echo "==> Add screenshot commentLine $PR"
+      echo "==> Add screenshot commentLine PR=$PR"
       body="$body ${f}![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
     fi
   done
@@ -125,16 +126,14 @@ else
     then
       echo "no error png found"
     else
-      echo "Found $f"
-      echo "before COUNTER=$COUNTER"
-      (( COUNTER++ )) || echo "Nothing to do with COUNTER++"
-      echo "after COUNTER=$COUNTER"
+      echo "Found '$f'"
+      (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
       newName="$(date +%s).png"
       mv "${f}" "$newName"
-      echo "==> Uploaded screenshot $newName"
+      echo "==> Upload #$COUNTER screenshot=$newName"
       curl -i -F "file=@$newName" https://www.mxtracks.info/github
-      echo "==> Add error screenshot commentLine $PR"
+      echo "==> Add error screenshot commentLine PR=$PR"
       body="$body <br/>${f}<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
     fi
   done
