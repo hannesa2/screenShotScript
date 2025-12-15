@@ -7,6 +7,8 @@ case $OS in
     echo "Fix display on Linux"
     export DISPLAY=:99
     sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+    sleep 2
+    free -m -h
     ;;
   'FreeBSD')
     ;;
@@ -23,8 +25,9 @@ esac
 
 diffFiles=./screenshotDiffs
 mkdir $diffFiles
-# set -x
+set -x
 ./git-diff-image/install.sh
+echo "after install"
 GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
 
 pwd
