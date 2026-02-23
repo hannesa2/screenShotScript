@@ -24,9 +24,16 @@ esac
 diffFiles=./screenshotDiffs
 rm -rf $diffFiles || echo "Nothing to do with rm -rf $diffFiles"
 mkdir $diffFiles
-# set -x
+
 ./git-diff-image/install.sh
-GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
+echo "==> Run git diff-image with output dir $diffFiles"
+if [ -n "$DEBUG_INFO" ]; then
+  set -x
+  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
+  set +x
+else
+  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
+fi
 
 pwd
 source $(dirname $0)/lib.sh
