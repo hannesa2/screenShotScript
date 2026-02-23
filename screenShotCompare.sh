@@ -22,6 +22,7 @@ case $OS in
 esac
 
 diffFiles=./screenshotDiffs
+rm -rf $diffFiles || echo "Nothing to do with rm -rf $diffFiles"
 mkdir $diffFiles
 # set -x
 ./git-diff-image/install.sh
