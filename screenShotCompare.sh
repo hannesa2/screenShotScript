@@ -1,6 +1,10 @@
 #!/bin/zsh
 set -eo pipefail # automatic. fails on any error
 
+# Optional parameter: forceFail (default: true)
+# Usage: ./screenShotCompare.sh [true|false]
+forceFail="${1:-true}"
+
 OS="`uname`"
 case $OS in
   'Linux')
@@ -161,4 +165,16 @@ fi
 
 # set error when diffs are there
 echo ""
-[ "$(ls -A $diffFiles)" ] && echo "==> Force error on diff files exists" && exit 1 || echo "==> all is fine" && exit 0
+if [ "$(ls -A $diffFiles)" ]; then
+  echo "==> Diff files exist"
+  if [ "$forceFail" = "true" ]; then
+    echo "==> Force error on diff files exists (forceFail=$forceFail)"
+    exit 1
+  else
+    echo "==> Not forcing error (forceFail=$forceFail)"
+    exit 0
+  fi
+else
+  echo "==> all is fine"
+  exit 0
+fi
