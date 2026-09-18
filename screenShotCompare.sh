@@ -110,8 +110,8 @@ else
     else
       (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
-      newName="${f}"
-      # mv "${f}" "$newName"
+      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${f}"
+      mv "${f}" "$newName"
       echo "==> Uploaded #$COUNTER screenshot=$newName"
       request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
       if [ -n "$DEBUG_INFO" ]; then
