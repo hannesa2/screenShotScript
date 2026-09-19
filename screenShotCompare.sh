@@ -113,13 +113,12 @@ else
       newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${f}"
       mv "${f}" "$newName"
       echo "==> Uploaded #$COUNTER screenshot=$newName"
-      request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
+      request_cmd="curl -s -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
       if [ -n "$DEBUG_INFO" ]; then
-        echo "$request_cmd"
+        echo "curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:***"
       fi
       request_result="$(eval "$request_cmd")"
       http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
-      echo "request_cmd=$request_cmd"
       if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
         echo "!! Screenshot upload failed for $newName \e[31m$http_status\e[0m"
         body="$body ${f} Upload http_status=<strong>$http_status</strong> <br/><br/>"
@@ -133,35 +132,38 @@ else
   done
 
   echo "==> Search for new untracked screenshots in $(pwd)"
-  newFilesList=$(git -C .. ls-files --others --exclude-standard -- '*.png' ":!${diffFiles#./}/**" ':!*baseline-screenshots*/**' ':!*view-op-error*' ':!*.xcresult/**' ':!External/**' ':!build/**' ':!DerivedData/**' 2>/dev/null || true)
+  newFilesList=$(git -C .. ls-files --others --exclude-standard \
+    -- 'scripts/*Screenshots*/**/*.png' 'scripts/*Screenshots*/*.png' \
+       'scripts/*screenshots*/**/*.png' 'scripts/*screenshots*/*.png' \
+       'screenshots*/**/*.png' 'Screenshots*/**/*.png' \
+       ":!${diffFiles#./}/**" ':!*baseline-screenshots*/**' 2>/dev/null || true)
   if [ -n "$newFilesList" ]; then
     while IFS= read -r relPath; do
       if [ -z "$relPath" ]; then
         continue
       fi
-      baseName=$(basename "$relPath")
+      safeName="${relPath//\//-}"
       echo "Found new screenshot '$relPath'"
       (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
-      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${baseName}"
+      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${safeName}"
       cp "../$relPath" "$newName"
       echo "==> Uploaded #$COUNTER new screenshot=$newName"
-      request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
+      request_cmd="curl -s -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
       if [ -n "$DEBUG_INFO" ]; then
-        echo "$request_cmd"
+        echo "curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:***"
       fi
       request_result="$(eval "$request_cmd")"
       http_status=$(echo "$request_result" | grep HTTP | awk '{print $2}')
-      echo "request_cmd=$request_cmd"
       if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
         echo "!! New screenshot upload failed for $newName \e[31m$http_status\e[0m"
-        body="$body ${baseName} (new) Upload http_status=<strong>$http_status</strong> <br/><br/>"
+        body="$body ${relPath} (new) Upload http_status=<strong>$http_status</strong> <br/><br/>"
         continue
       else :
         echo "==> New screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
       fi
       echo "==> Add new screenshot commentLine PR=$PR"
-      body="$body ${baseName} (new screenshot)<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
+      body="$body ${relPath} (new screenshot)<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
     done <<< "$newFilesList"
   else
     echo "no new untracked screenshots found"
