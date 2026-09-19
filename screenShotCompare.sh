@@ -61,7 +61,7 @@ echo "==> Delete all old comments, starting with 'Screenshot differs:"
 oldCommentsJson=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments)
 if [ -n "$DEBUG_INFO" ]; then
   echo "DEBUG_INFO is set and not empty"
-  echo $oldCommentsJson
+  printf '%s\n' "$oldCommentsJson"
 else
   echo "DEBUG_INFO is unset or empty"
 fi
@@ -71,7 +71,7 @@ if [ "$PR" = "master" ]; then
   oldCommentsList=""
 else
   # the last echo fixes a merge to master, because then no such comments exists
-  oldCommentsList=$(echo $oldCommentsJson | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
+  oldCommentsList=$(printf '%s' "$oldCommentsJson" | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
   echo "oldCommentsList=$oldCommentsList"
   oldCommentsList=$(echo $oldCommentsList | grep true || echo "") # filter lines containing true
   echo "oldCommentsList=$oldCommentsList"
@@ -110,8 +110,8 @@ else
     else
       (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
-      newName="${f}"
-      # mv "${f}" "$newName"
+      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${f}"
+      mv "${f}" "$newName"
       echo "==> Uploaded #$COUNTER screenshot=$newName"
       request_cmd="curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
       if [ -n "$DEBUG_INFO" ]; then
