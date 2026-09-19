@@ -115,7 +115,7 @@ else
       echo "==> Uploaded #$COUNTER screenshot=$newName"
       request_cmd="curl -s -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
       if [ -n "$DEBUG_INFO" ]; then
-        echo "curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:***"
+        echo "${request_cmd//$SCREENSHOT_PASSWORD/***}"
       fi
       request_result="$(eval "$request_cmd")"
       http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
@@ -136,7 +136,7 @@ else
     -- 'scripts/*Screenshots*/**/*.png' 'scripts/*Screenshots*/*.png' \
        'scripts/*screenshots*/**/*.png' 'scripts/*screenshots*/*.png' \
        'screenshots*/**/*.png' 'Screenshots*/**/*.png' \
-       ":!${diffFiles#./}/**" ':!*baseline-screenshots*/**' 2>/dev/null || true)
+       ":!${diffFiles#./}/**" ':!*baseline-screenshots*/**' ':!*view-op-error*' 2>/dev/null || true)
   if [ -n "$newFilesList" ]; then
     while IFS= read -r relPath; do
       if [ -z "$relPath" ]; then
@@ -151,7 +151,7 @@ else
       echo "==> Uploaded #$COUNTER new screenshot=$newName"
       request_cmd="curl -s -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
       if [ -n "$DEBUG_INFO" ]; then
-        echo "curl -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:***"
+        echo "${request_cmd//$SCREENSHOT_PASSWORD/***}"
       fi
       request_result="$(eval "$request_cmd")"
       http_status=$(echo "$request_result" | grep HTTP | awk '{print $2}')
