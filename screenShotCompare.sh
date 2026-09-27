@@ -135,7 +135,8 @@ else
   newFilesList=$(git -C .. ls-files --others --exclude-standard \
     -- 'scripts/*Screenshots*/**/*.png' 'scripts/*Screenshots*/*.png' \
        'scripts/*screenshots*/**/*.png' 'scripts/*screenshots*/*.png' \
-       'screenshots*/**/*.png' 'Screenshots*/**/*.png' \
+       'screenshots*/**/*.png' 'screenshots*/*.png' \
+       'Screenshots*/**/*.png' 'Screenshots*/*.png' \
        ":!${diffFiles#./}/**" ':!*baseline-screenshots*/**' ':!*view-op-error*' 2>/dev/null || true)
   if [ -n "$newFilesList" ]; then
     while IFS= read -r relPath; do
