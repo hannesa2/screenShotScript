@@ -5,6 +5,12 @@ set -eo pipefail # automatic. fails on any error
 # Usage: ./screenShotCompare.sh [true|false]
 forceFail="${1:-true}"
 
+# Percentage of ImageMagick fuzz applied to every screenshot comparison, not just JPEGs
+# (which git-diff-image defaults to 5% on its own). Screenshots are PNGs and otherwise get 0% fuzz, so harmless per-run
+# rendering noise is flagged as a difference just as loudly as a real regression.
+# Override by exporting SCREENSHOT_COMPARE_FUZZ before calling this script.
+screenshotCompareFuzz="${SCREENSHOT_COMPARE_FUZZ:-5}"
+
 OS="`uname`"
 case $OS in
   'Linux')
@@ -30,13 +36,13 @@ rm -rf $diffFiles || echo "Nothing to do with rm -rf $diffFiles"
 mkdir $diffFiles
 
 ./git-diff-image/install.sh
-echo "==> Run git diff-image with output dir $diffFiles"
+echo "==> Run git diff-image with output dir $diffFiles and fuzz $screenshotCompareFuzz%"
 if [ -n "$DEBUG_INFO" ]; then
   set -x
-  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
+  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
   set +x
 else
-  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles git diff-image
+  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
 fi
 
 pwd
