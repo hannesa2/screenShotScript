@@ -62,11 +62,14 @@ fi
 # https://github.com/user-attachments/... URL on success. This needs nothing
 # but the token GitHub Actions already hands every job, so screenshots no
 # longer depend on a privately-run upload server.
+# The HTTP status is appended on its own trailing line (-w) instead of
+# relying on curl's exit code, so a failure response - whose body is GitHub's
+# actual error message - gets logged instead of silently discarded.
 upload_to_github() {
   local file="$1"
   local name="$2"
-  local url
-  url=$(curl --fail-with-body -sS -X POST \
+  local response http_status body url
+  response=$(curl -sS -w '\n%{http_code}' -X POST \
     "https://uploads.github.com/user-attachments/assets" \
     --url-query "name=$name" \
     --url-query "content_type=image/png" \
@@ -74,10 +77,18 @@ upload_to_github() {
     -H "Content-Type: application/octet-stream" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -H "Authorization: Bearer $GITHUB_TOKEN" \
-    --data-binary "@$file" | jq -r .url) || { echo "!! upload request failed for $file" >&2; return 1; }
+    --data-binary "@$file")
+  http_status="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  if [ "$http_status" != "200" ] && [ "$http_status" != "201" ]; then
+    echo "!! upload failed for $file: http_status=$http_status" >&2
+    echo "$body" >&2
+    return 1
+  fi
+  url=$(printf '%s' "$body" | jq -r .url)
   case "$url" in
     https://*) printf '%s' "$url" ;;
-    *) echo "!! upload failed for $file: $url" >&2; return 1 ;;
+    *) echo "!! upload failed for $file: unexpected response body: $body" >&2; return 1 ;;
   esac
 }
 
