@@ -53,15 +53,16 @@ echo $(echo "$GITHUB_REF_NAME" | sed "s/\// /")
 PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
 echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
 
-if [ -z "${GITHUB_TOKEN}" ]; then
-   echo "\e[31m!! You must provide GITHUB_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
+if [ -z "${CLASSIC_TOKEN}" ]; then
+   echo "\e[31m!! You must provide CLASSIC_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
 fi
 
 # Uploads $1 to GitHub's own attachment hosting (the same endpoint the web UI
 # uses to host images dropped into issue/PR comments) and echoes the resulting
-# https://github.com/user-attachments/... URL on success. This needs nothing
-# but the token GitHub Actions already hands every job, so screenshots no
-# longer depend on a privately-run upload server.
+# https://github.com/user-attachments/... URL on success. This needs CLASSIC_TOKEN
+# (a classic PAT): the Actions-provided GITHUB_TOKEN (a GitHub App installation
+# token) gets a plain 404 from this endpoint, so a privately-run upload server
+# is no longer needed, but a PAT still is.
 # The HTTP status is appended on its own trailing line (-w) instead of
 # relying on curl's exit code, so a failure response - whose body is GitHub's
 # actual error message - gets logged instead of silently discarded.
@@ -76,7 +77,7 @@ upload_to_github() {
     --url-query "repository_id=$repoId" \
     -H "Content-Type: application/octet-stream" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
-    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Authorization: token $CLASSIC_TOKEN" \
     --data-binary "@$file")
   http_status="${response##*$'\n'}"
   body="${response%$'\n'*}"
@@ -219,8 +220,8 @@ else
   if [ ! "$body" == "" ]; then
     echo "==> Post commentLine to $PR"
     echo "==> body=$body"
-    if [ -z "${GITHUB_TOKEN}" ]; then
-       echo "!! You must provide a \e[31mGITHUB_TOKEN\e[0m environment variable. Exiting...."
+    if [ -z "${CLASSIC_TOKEN}" ]; then
+       echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
        exit 1
     fi
     curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/>setpoint (old) | diff | actual screenshot (new)<br/><br/> $body \" }"
