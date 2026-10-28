@@ -53,15 +53,33 @@ echo $(echo "$GITHUB_REF_NAME" | sed "s/\// /")
 PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
 echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
 
-if [ -z "${CLASSIC_TOKEN}" ]; then
-   echo "\e[31m!! You must provide CLASSIC_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
+if [ -z "${GITHUB_TOKEN}" ]; then
+   echo "\e[31m!! You must provide GITHUB_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
 fi
-if [ -z "${SCREENSHOT_USER}" ]; then
-   echo "\e[31m!! You must provide SCREENSHOT_USER environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
-fi
-if [ -z "${SCREENSHOT_PASSWORD}" ]; then
-   echo "\e[31m!! You must provide SCREENSHOT_PASSWORD environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
-fi
+
+# Uploads $1 to GitHub's own attachment hosting (the same endpoint the web UI
+# uses to host images dropped into issue/PR comments) and echoes the resulting
+# https://github.com/user-attachments/... URL on success. This needs nothing
+# but the token GitHub Actions already hands every job, so screenshots no
+# longer depend on a privately-run upload server.
+upload_to_github() {
+  local file="$1"
+  local name="$2"
+  local url
+  url=$(curl --fail-with-body -sS -X POST \
+    "https://uploads.github.com/user-attachments/assets" \
+    --url-query "name=$name" \
+    --url-query "content_type=image/png" \
+    --url-query "repository_id=$repoId" \
+    -H "Content-Type: application/octet-stream" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    --data-binary "@$file" | jq -r .url) || { echo "!! upload request failed for $file" >&2; return 1; }
+  case "$url" in
+    https://*) printf '%s' "$url" ;;
+    *) echo "!! upload failed for $file: $url" >&2; return 1 ;;
+  esac
+}
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
 oldCommentsJson=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments)
@@ -76,6 +94,9 @@ if [ "$PR" = "master" ]; then
   echo "PR is master, nothing to upload"
   oldCommentsList=""
 else
+  repoId=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY" | jq -r .id)
+  echo "repoId=$repoId"
+
   # the last echo fixes a merge to master, because then no such comments exists
   oldCommentsList=$(printf '%s' "$oldCommentsJson" | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
   echo "oldCommentsList=$oldCommentsList"
@@ -118,22 +139,14 @@ else
 
       newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${f}"
       mv "${f}" "$newName"
-      echo "==> Uploaded #$COUNTER screenshot=$newName"
-      request_cmd="curl -s -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
-      if [ -n "$DEBUG_INFO" ]; then
-        echo "${request_cmd//$SCREENSHOT_PASSWORD/***}"
-      fi
-      request_result="$(eval "$request_cmd")"
-      http_status=$(echo "$request_result" | grep HTTP |  awk '{print $2}')
-      if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
-        echo "!! Screenshot upload failed for $newName \e[31m$http_status\e[0m"
-        body="$body ${f} Upload http_status=<strong>$http_status</strong> <br/><br/>"
+      echo "==> Uploading #$COUNTER screenshot=$newName"
+      if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
+        body="$body ${f} Upload failed <br/><br/>"
         continue
-      else :
-        echo "==> Screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
       fi
+      echo "==> Screenshot upload successful for $newName -> $uploadUrl"
       echo "==> Add screenshot commentLine PR=$PR"
-      body="$body ${f}![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
+      body="$body ${f}![screenshot]($uploadUrl) <br/><br/>"
     fi
   done
 
@@ -155,22 +168,14 @@ else
 
       newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${safeName}"
       cp "../$relPath" "$newName"
-      echo "==> Uploaded #$COUNTER new screenshot=$newName"
-      request_cmd="curl -s -i -F \"file=@$newName\" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD"
-      if [ -n "$DEBUG_INFO" ]; then
-        echo "${request_cmd//$SCREENSHOT_PASSWORD/***}"
-      fi
-      request_result="$(eval "$request_cmd")"
-      http_status=$(echo "$request_result" | grep HTTP | awk '{print $2}')
-      if [ "$http_status" != "200" ] && [ "$http_status" != "302" ]; then
-        echo "!! New screenshot upload failed for $newName \e[31m$http_status\e[0m"
-        body="$body ${relPath} (new) Upload http_status=<strong>$http_status</strong> <br/><br/>"
+      echo "==> Uploading #$COUNTER new screenshot=$newName"
+      if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
+        body="$body ${relPath} (new) Upload failed <br/><br/>"
         continue
-      else :
-        echo "==> New screenshot upload successful for $newName with http_status=\e[32m$http_status\e[0m"
       fi
+      echo "==> New screenshot upload successful for $newName -> $uploadUrl"
       echo "==> Add new screenshot commentLine PR=$PR"
-      body="$body ${relPath} (new screenshot)<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
+      body="$body ${relPath} (new screenshot)<br/>![screenshot]($uploadUrl) <br/><br/>"
     done <<< "$newFilesList"
   else
     echo "no new untracked screenshots found"
@@ -188,10 +193,13 @@ else
 
       newName="$(date +%s).png"
       mv "${f}" "$newName"
-      echo "==> Upload #$COUNTER screenshot=$newName"
-      curl -i -F "file=@$newName" https://www.mxtracks.info/github -u $SCREENSHOT_USER:$SCREENSHOT_PASSWORD
+      echo "==> Uploading #$COUNTER screenshot=$newName"
+      if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
+        body="$body ${f} (error) Upload failed <br/><br/>"
+        continue
+      fi
       echo "==> Add error screenshot commentLine PR=$PR"
-      body="$body <br/>${f}<br/>![screenshot](https://www.mxtracks.info/github/uploads/$newName) <br/><br/>"
+      body="$body <br/>${f}<br/>![screenshot]($uploadUrl) <br/><br/>"
     done <<< "$errorFiles"
   else
     echo "no error png found"
@@ -200,8 +208,8 @@ else
   if [ ! "$body" == "" ]; then
     echo "==> Post commentLine to $PR"
     echo "==> body=$body"
-    if [ -z "${CLASSIC_TOKEN}" ]; then
-       echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
+    if [ -z "${GITHUB_TOKEN}" ]; then
+       echo "!! You must provide a \e[31mGITHUB_TOKEN\e[0m environment variable. Exiting...."
        exit 1
     fi
     curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/>setpoint (old) | diff | actual screenshot (new)<br/><br/> $body \" }"

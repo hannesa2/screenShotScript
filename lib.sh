@@ -7,12 +7,13 @@ function err() {
 }
 
 function curl_gh() {
-  if [[ -n "$CLASSIC_TOKEN" ]]; then
+  if [[ -n "$GITHUB_TOKEN" ]]; then
     curl \
       --silent \
-      --header "Authorization: token $CLASSIC_TOKEN" \
+      --header "Authorization: Bearer $GITHUB_TOKEN" \
+      --header "X-GitHub-Api-Version: 2022-11-28" \
       "$@"
   else
-    err "WARNING: No CLASSIC_TOKEN found. Skipping API call"
+    err "WARNING: No GITHUB_TOKEN found. Skipping API call"
   fi
 }
