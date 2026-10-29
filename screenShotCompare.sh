@@ -4,17 +4,31 @@ set -eo pipefail # automatic. fails on any error
 # Optional parameter: forceFail (default: true)
 # Usage: ./screenShotCompare.sh [true|false]
 # Paparazzi mode: ./screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]
+# iOS mode: ./screenShotCompare.sh --ios <screenshots-dir> [forceFail]
 paparazziMode=false
+iosMode=false
 if [[ "${1:-}" == "--paparazzi" ]]; then
   paparazziMode=true
   paparazziBuildDir="${2:?Usage: screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]}"
   paparazziSnapshotsDir="${3:?Usage: screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]}"
   forceFail="${4:-false}"
   screenshotCompareLabel="Paparazzi"
+  screenshotPlatform="android"
+  screenshotCompareTag="paparazzi"
+elif [[ "${1:-}" == "--ios" ]]; then
+  iosMode=true
+  iosScreenshotsDir="${2:?Usage: screenShotCompare.sh --ios <screenshots-dir> [forceFail]}"
+  forceFail="${3:-false}"
+  screenshotCompareLabel="iOS"
+  screenshotPlatform="ios"
+  screenshotCompareTag="ios"
 else
   forceFail="${1:-true}"
   screenshotCompareLabel="emulatorApi=$emulatorApi"
+  screenshotPlatform="android"
+  screenshotCompareTag="$emulatorApi"
 fi
+screenshotCommentMarker="<!-- screenshot-compare:$screenshotPlatform -->"
 
 # Percentage of ImageMagick fuzz applied to every screenshot comparison, not just JPEGs
 # (which git-diff-image defaults to 5% on its own). Screenshots are PNGs and otherwise get 0% fuzz, so harmless per-run
@@ -66,6 +80,27 @@ if [[ "$paparazziMode" == true ]]; then
         cp "$expected" "$diffFiles/$fqcn-expected.png"
       fi
     done
+  fi
+elif [[ "$iosMode" == true ]]; then
+  resultFile="$iosScreenshotsDir/result.json"
+  echo "==> Collect iOS screenshot failures from $resultFile"
+  if [[ -f "$resultFile" ]]; then
+    while IFS= read -r failure; do
+      screen="${failure%%:*}"
+      screen="${screen## }"
+      screen="${screen%% }"
+      [[ -n "$screen" ]] || continue
+      for suffix in expected actual diff; do
+        if [[ "$suffix" == "expected" ]]; then
+          sourceFile="$iosScreenshotsDir/$screen-expected.png"
+        elif [[ "$suffix" == "actual" ]]; then
+          sourceFile="$iosScreenshotsDir/$screen.png"
+        else
+          sourceFile="$iosScreenshotsDir/$screen-diff.png"
+        fi
+        [[ -f "$sourceFile" ]] && cp "$sourceFile" "$diffFiles/$screen-$suffix.png"
+      done
+    done < <(jq -r '.failures[]?' "$resultFile")
   fi
 else
   ./git-diff-image/install.sh
@@ -217,34 +252,14 @@ fi
 
 if [ "$PR" = "master" ]; then
   echo "PR is master, nothing to upload"
-  oldCommentsList=""
 else
   repoId=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY" | jq -r .id)
   echo "repoId=$repoId"
 
-  # the last echo fixes a merge to master, because then no such comments exists
-  oldCommentsList=$(printf '%s' "$oldCommentsJson" | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
-  echo "oldCommentsList=$oldCommentsList"
-  oldCommentsList=$(echo $oldCommentsList | grep true || echo "") # filter lines containing true
-  echo "oldCommentsList=$oldCommentsList"
-  if [ -z "$oldCommentsList" ]
-  then
-    echo "==> oldCommentsList is empty, there is nothing to do"
-  else
-    oldCommentsFiltered=$(echo $oldCommentsList | grep "|true" | tr -d "\"" | cut -f1 -d"|")
-    echo "oldCommentsFiltered=$oldCommentsFiltered"
-    echo "$oldCommentsFiltered" | while read commentLine; do
-      if [ -z "$commentLine" ]
-      then
-        # commentLine is empty
-        echo "==> old commentLine is empty, there is nothing to do"
-      else
-        # commentLine is not empty
-        echo "==> delete commentLine=$commentLine"
-        curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$commentLine"
-      fi
-    done
-  fi
+  oldCommentsJson=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments)
+  legacyCommentMarker="<!-- screenshot-diff:$screenshotPlatform -->"
+  existingCommentId=$(printf '%s' "$oldCommentsJson" | jq -r --arg marker "$screenshotCommentMarker" --arg legacy "$legacyCommentMarker" '[.[] | select((.body | contains($marker)) or (.body | contains($legacy)))][0].id // empty')
+  echo "Existing $screenshotPlatform screenshot comment: ${existingCommentId:-none}"
 
   pushd $diffFiles
   pwd
@@ -262,7 +277,7 @@ else
     else
       (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
-      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${f}"
+      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${screenshotCompareTag}-${f}"
       mv "${f}" "$newName"
       echo "==> Uploading #$COUNTER screenshot=$newName"
       if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
@@ -291,7 +306,7 @@ else
       echo "Found new screenshot '$relPath'"
       (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
-      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${safeName}"
+      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${screenshotCompareTag}-${safeName}"
       cp "../$relPath" "$newName"
       echo "==> Uploading #$COUNTER new screenshot=$newName"
       if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
@@ -316,7 +331,7 @@ else
       echo "Found '$f'"
       (( COUNTER++ )) || echo "Nothing to do with COUNTER++ it's now $COUNTER"
 
-      newName="$(date +%s).png"
+      newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${screenshotCompareTag}-$(date +%s).png"
       mv "${f}" "$newName"
       echo "==> Uploading #$COUNTER screenshot=$newName"
       if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
@@ -332,12 +347,22 @@ else
 
   if [ ! "$body" == "" ]; then
     echo "==> Post commentLine to $PR"
-    echo "==> body=$body"
     if [ -z "${CLASSIC_TOKEN}" ]; then
        echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
        exit 1
     fi
-    curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: $screenshotCompareLabel with $COUNTER screenshot(s)<br/><br/>setpoint (old) | diff | actual screenshot (new)<br/><br/> $body \" }"
+    commentBody="$screenshotCommentMarker"$'\n\n'"Screenshot differs: $screenshotCompareLabel with $COUNTER screenshot(s)"$'\n\n'"setpoint (old) | diff | actual screenshot (new)"$'\n\n'"$body"
+    newline=$'\n'
+    commentBody="${commentBody//<br\/>/$newline}"
+    commentJson=$(jq -n --arg body "$commentBody" '{body: $body}')
+    if [ -n "$existingCommentId" ]; then
+      curl_gh -X PATCH https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$existingCommentId" -d "$commentJson"
+    else
+      curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "$commentJson"
+    fi
+  elif [ -n "$existingCommentId" ]; then
+    echo "==> Remove stale $screenshotPlatform screenshot comment"
+    curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$existingCommentId"
   fi
 
   popd 1>/dev/null
