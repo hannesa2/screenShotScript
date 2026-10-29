@@ -5,9 +5,20 @@ set -eo pipefail # automatic. fails on any error
 # Usage: ./screenShotCompare.sh [true|false]
 # Paparazzi mode: ./screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]
 # iOS mode: ./screenShotCompare.sh --ios <screenshots-dir> [forceFail]
+# Combined mode: ./screenShotCompare.sh --combined <build-dir> <snapshots-dir> <ios-dir> [forceFail]
 paparazziMode=false
 iosMode=false
-if [[ "${1:-}" == "--paparazzi" ]]; then
+if [[ "${1:-}" == "--combined" ]]; then
+  paparazziMode=true
+  iosMode=true
+  paparazziBuildDir="${2:?Missing Paparazzi build directory}"
+  paparazziSnapshotsDir="${3:?Missing Paparazzi snapshots directory}"
+  iosScreenshotsDir="${4:?Missing iOS screenshot directory}"
+  forceFail="${5:-false}"
+  screenshotCompareLabel="Android and iOS"
+  screenshotPlatform="all"
+  screenshotCompareTag="combined"
+elif [[ "${1:-}" == "--paparazzi" ]]; then
   paparazziMode=true
   paparazziBuildDir="${2:?Usage: screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]}"
   paparazziSnapshotsDir="${3:?Usage: screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]}"
@@ -39,9 +50,11 @@ screenshotCompareFuzz="${SCREENSHOT_COMPARE_FUZZ:-5}"
 OS="`uname`"
 case $OS in
   'Linux')
-    echo "Fix display on Linux"
-    export DISPLAY=:99
-    sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+    if [[ "$paparazziMode" == false && "$iosMode" == false ]]; then
+      echo "Fix display on Linux"
+      export DISPLAY=:99
+      sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+    fi
     ;;
   'FreeBSD')
     ;;
@@ -81,10 +94,16 @@ if [[ "$paparazziMode" == true ]]; then
       fi
     done
   fi
-elif [[ "$iosMode" == true ]]; then
+fi
+if [[ "$iosMode" == true ]]; then
   resultFile="$iosScreenshotsDir/result.json"
   echo "==> Collect iOS screenshot failures from $resultFile"
+  if [[ "$screenshotPlatform" == "all" && ! -f "$resultFile" ]]; then
+    echo "!! Missing iOS screenshot results; preserving previous reports." >&2
+    exit 1
+  fi
   if [[ -f "$resultFile" ]]; then
+    iosFailures=$(jq -r '.failures | if type == "array" then .[] else error("Expected failures array") end' "$resultFile")
     while IFS= read -r failure; do
       screen="${failure%%:*}"
       screen="${screen## }"
@@ -95,12 +114,13 @@ elif [[ "$iosMode" == true ]]; then
           sourceFile="$iosScreenshotsDir/$screen-expected.png"
         elif [[ "$suffix" == "actual" ]]; then
           sourceFile="$iosScreenshotsDir/$screen.png"
-        else
+        fi
+        if [[ "$paparazziMode" == false && "$iosMode" == false ]]; then
           sourceFile="$iosScreenshotsDir/$screen-diff.png"
         fi
         [[ -f "$sourceFile" ]] && cp "$sourceFile" "$diffFiles/$screen-$suffix.png"
       done
-    done < <(jq -r '.failures[]?' "$resultFile")
+    done <<< "$iosFailures"
   fi
 else
   ./git-diff-image/install.sh
@@ -253,13 +273,35 @@ fi
 if [ "$PR" = "master" ]; then
   echo "PR is master, nothing to upload"
 else
+  if [[ -z "$CLASSIC_TOKEN" ]]; then
+    echo "!! CLASSIC_TOKEN is required to report screenshot differences." >&2
+    exit 1
+  fi
   repoId=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY" | jq -r .id)
   echo "repoId=$repoId"
 
-  oldCommentsJson=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments)
   legacyCommentMarker="<!-- screenshot-diff:$screenshotPlatform -->"
-  existingCommentId=$(printf '%s' "$oldCommentsJson" | jq -r --arg marker "$screenshotCommentMarker" --arg legacy "$legacyCommentMarker" '[.[] | select((.body | contains($marker)) or (.body | contains($legacy)))][0].id // empty')
-  echo "Existing $screenshotPlatform screenshot comment: ${existingCommentId:-none}"
+  existingCommentIds=()
+  page=1
+  while true; do
+    oldCommentsJson=$(curl_gh -X GET "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100&page=$page")
+    matchingIds=$(printf '%s' "$oldCommentsJson" | jq -r \
+      --arg marker "$screenshotCommentMarker" --arg legacy "$legacyCommentMarker" \
+      --arg platform "$screenshotPlatform" \
+      '.[] | select(
+        (.body | contains($marker)) or (.body | contains($legacy)) or
+        ($platform == "all" and (
+          (.body | contains("<!-- screenshot-compare:")) or
+          (.body | contains("<!-- screenshot-diff:")) or
+          (.body | startswith("Screenshot differs:"))
+        ))
+      ) | .id')
+    if [[ -n "$matchingIds" ]]; then
+      existingCommentIds+=("${(@f)matchingIds}")
+    fi
+    [[ $(printf '%s' "$oldCommentsJson" | jq 'length') -lt 100 ]] && break
+    (( page++ ))
+  done
 
   pushd $diffFiles
   pwd
@@ -355,15 +397,12 @@ else
     newline=$'\n'
     commentBody="${commentBody//<br\/>/$newline}"
     commentJson=$(jq -n --arg body "$commentBody" '{body: $body}')
-    if [ -n "$existingCommentId" ]; then
-      curl_gh -X PATCH https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$existingCommentId" -d "$commentJson"
-    else
-      curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "$commentJson"
-    fi
-  elif [ -n "$existingCommentId" ]; then
-    echo "==> Remove stale $screenshotPlatform screenshot comment"
-    curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$existingCommentId"
+    curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "$commentJson"
   fi
+  for existingCommentId in "${existingCommentIds[@]}"; do
+    echo "==> Remove previous screenshot comment $existingCommentId"
+    curl_gh -X DELETE https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/comments/"$existingCommentId"
+  done
 
   popd 1>/dev/null
 fi
