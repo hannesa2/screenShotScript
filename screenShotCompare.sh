@@ -66,15 +66,21 @@ fi
 # The HTTP status is appended on its own trailing line (-w) instead of
 # relying on curl's exit code, so a failure response - whose body is GitHub's
 # actual error message - gets logged instead of silently discarded.
+# Query parameters are URL-encoded and appended to the URL manually (via jq's
+# @uri filter) instead of using curl's --url-query, which needs curl >= 7.87.
+# This keeps the script working on older runners (e.g. Ubuntu 22.04 ships
+# curl 7.81.0) since this script is reused across repos/pipelines we don't
+# control the runner image for.
 upload_to_github() {
   local file="$1"
   local name="$2"
   local response http_status body url
+  local encodedName encodedContentType encodedRepoId
+  encodedName=$(jq -rn --arg v "$name" '$v|@uri')
+  encodedContentType=$(jq -rn --arg v "image/png" '$v|@uri')
+  encodedRepoId=$(jq -rn --arg v "$repoId" '$v|@uri')
   response=$(curl -sS -w '\n%{http_code}' -X POST \
-    "https://uploads.github.com/user-attachments/assets" \
-    --url-query "name=$name" \
-    --url-query "content_type=image/png" \
-    --url-query "repository_id=$repoId" \
+    "https://uploads.github.com/user-attachments/assets?name=${encodedName}&content_type=${encodedContentType}&repository_id=${encodedRepoId}" \
     -H "Content-Type: application/octet-stream" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -H "Authorization: token $CLASSIC_TOKEN" \
