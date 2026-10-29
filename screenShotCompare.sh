@@ -3,7 +3,18 @@ set -eo pipefail # automatic. fails on any error
 
 # Optional parameter: forceFail (default: true)
 # Usage: ./screenShotCompare.sh [true|false]
-forceFail="${1:-true}"
+# Paparazzi mode: ./screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]
+paparazziMode=false
+if [[ "${1:-}" == "--paparazzi" ]]; then
+  paparazziMode=true
+  paparazziBuildDir="${2:?Usage: screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]}"
+  paparazziSnapshotsDir="${3:?Usage: screenShotCompare.sh --paparazzi <build-dir> <snapshots-dir> [forceFail]}"
+  forceFail="${4:-false}"
+  screenshotCompareLabel="Paparazzi"
+else
+  forceFail="${1:-true}"
+  screenshotCompareLabel="emulatorApi=$emulatorApi"
+fi
 
 # Percentage of ImageMagick fuzz applied to every screenshot comparison, not just JPEGs
 # (which git-diff-image defaults to 5% on its own). Screenshots are PNGs and otherwise get 0% fuzz, so harmless per-run
@@ -35,14 +46,37 @@ diffFiles=./screenshotDiffs
 rm -rf $diffFiles || echo "Nothing to do with rm -rf $diffFiles"
 mkdir $diffFiles
 
-./git-diff-image/install.sh
-echo "==> Run git diff-image with output dir $diffFiles and fuzz $screenshotCompareFuzz%"
-if [ -n "$SCREENSHOT_DEBUG" ]; then
-  set -x
-  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
-  set +x
+if [[ "$paparazziMode" == true ]]; then
+  setopt no_nomatch
+  failuresDir="$paparazziBuildDir/paparazzi/failures"
+  echo "==> Collect Paparazzi failures from $failuresDir"
+  if [[ -d "$failuresDir" ]]; then
+    for diff in "$failuresDir"/delta-*.png; do
+      [[ -f "$diff" ]] || continue
+      fqcn="${diff:t}"
+      fqcn="${fqcn#delta-}"
+      fqcn="${fqcn%.png}"
+      actual="$failuresDir/$fqcn.png"
+      [[ -f "$actual" ]] || continue
+
+      cp "$actual" "$diffFiles/$fqcn-actual.png"
+      cp "$diff" "$diffFiles/$fqcn-diff.png"
+      expected="$paparazziSnapshotsDir/images/$fqcn.png"
+      if [[ -f "$expected" ]]; then
+        cp "$expected" "$diffFiles/$fqcn-expected.png"
+      fi
+    done
+  fi
 else
-  GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
+  ./git-diff-image/install.sh
+  echo "==> Run git diff-image with output dir $diffFiles and fuzz $screenshotCompareFuzz%"
+  if [ -n "$SCREENSHOT_DEBUG" ]; then
+    set -x
+    GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
+    set +x
+  else
+    GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
+  fi
 fi
 
 pwd
@@ -303,7 +337,7 @@ else
        echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
        exit 1
     fi
-    curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/>setpoint (old) | diff | actual screenshot (new)<br/><br/> $body \" }"
+    curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: $screenshotCompareLabel with $COUNTER screenshot(s)<br/><br/>setpoint (old) | diff | actual screenshot (new)<br/><br/> $body \" }"
   fi
 
   popd 1>/dev/null
