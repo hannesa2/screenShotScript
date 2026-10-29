@@ -53,44 +53,76 @@ echo $(echo "$GITHUB_REF_NAME" | sed "s/\// /")
 PR=$(echo "$GITHUB_REF_NAME" | sed "s/\// /" | awk '{print $1}')
 echo "PR=$PR GITHUB_REF_NAME=$GITHUB_REF_NAME"
 
-if [ -z "${CLASSIC_TOKEN}" ]; then
-   echo "\e[31m!! You must provide CLASSIC_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
+if [ -z "${GITHUB_TOKEN}" ]; then
+   echo "\e[31m!! You must provide GITHUB_TOKEN environment variable.\e[0m Otherwise screenshot compare doesn't work properly"
 fi
 
-# Uploads $1 to GitHub's own attachment hosting (the same endpoint the web UI
-# uses to host images dropped into issue/PR comments) and echoes the resulting
-# https://github.com/user-attachments/... URL on success. This needs CLASSIC_TOKEN
-# (a classic PAT): the Actions-provided GITHUB_TOKEN (a GitHub App installation
-# token) gets a plain 404 from this endpoint, so a privately-run upload server
-# is no longer needed, but a PAT still is.
-# The HTTP status is appended on its own trailing line (-w) instead of
-# relying on curl's exit code, so a failure response - whose body is GitHub's
-# actual error message - gets logged instead of silently discarded.
-upload_to_github() {
+# Screenshots are hosted by committing them to a dedicated, history-less
+# branch (default: screenshot-assets) and embedding the resulting
+# https://raw.githubusercontent.com/... URL. Unlike the
+# uploads.github.com/user-attachments/assets API (which rejects the
+# Actions-provided GITHUB_TOKEN, a GitHub App installation token, with a 404),
+# a plain `git push` only cares whether the token is allowed to write, so the
+# default GITHUB_TOKEN works fine here and no classic PAT is needed any more.
+assetsBranch="${SCREENSHOT_ASSETS_BRANCH:-screenshot-assets}"
+assetsWorkDir=""
+assetsReady=false
+assetsChanged=false
+
+# Clones (or creates) the assets branch into a scratch worktree, isolated
+# from the actual checkout this script runs in. Called lazily on the first
+# screenshot so a run with nothing to upload never touches the branch.
+init_assets_branch() {
+  assetsWorkDir=$(mktemp -d)
+  git -C "$assetsWorkDir" init --quiet
+  git -C "$assetsWorkDir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+  git -C "$assetsWorkDir" config user.name "github-actions[bot]"
+  git -C "$assetsWorkDir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  if git -C "$assetsWorkDir" fetch --quiet --depth 1 origin "$assetsBranch" 2>/dev/null; then
+    git -C "$assetsWorkDir" checkout --quiet -b "$assetsBranch" FETCH_HEAD
+  else
+    echo "==> Branch $assetsBranch does not exist yet on origin, creating it"
+    git -C "$assetsWorkDir" checkout --quiet --orphan "$assetsBranch"
+  fi
+  # Each run replaces the previous screenshots for this PR, so the branch
+  # doesn't grow unbounded while a PR gets pushed to repeatedly.
+  rm -rf "${assetsWorkDir:?}/pr-$PR"
+  assetsReady=true
+}
+
+# Copies $1 into the assets worktree under pr-$PR/$2 and sets $stagedUrl to
+# the raw URL it will be reachable at once pushed. The actual commit+push
+# happens once, after every screenshot of this run has been staged (see
+# below), so a single push failure is reported once instead of once per
+# file. Must be called directly (not via `$(...)`) so assetsWorkDir and
+# friends, set as a side effect, stay visible in the caller's shell instead
+# of being thrown away with a subshell.
+stage_screenshot() {
   local file="$1"
   local name="$2"
-  local response http_status body url
-  response=$(curl -sS -w '\n%{http_code}' -X POST \
-    "https://uploads.github.com/user-attachments/assets" \
-    --url-query "name=$name" \
-    --url-query "content_type=image/png" \
-    --url-query "repository_id=$repoId" \
-    -H "Content-Type: application/octet-stream" \
-    -H "X-GitHub-Api-Version: 2022-11-28" \
-    -H "Authorization: token $CLASSIC_TOKEN" \
-    --data-binary "@$file")
-  http_status="${response##*$'\n'}"
-  body="${response%$'\n'*}"
-  if [ "$http_status" != "200" ] && [ "$http_status" != "201" ]; then
-    echo "!! upload failed for $file: http_status=$http_status" >&2
-    echo "$body" >&2
-    return 1
+  if [ "$assetsReady" != "true" ]; then
+    init_assets_branch
   fi
-  url=$(printf '%s' "$body" | jq -r .url)
-  case "$url" in
-    https://*) printf '%s' "$url" ;;
-    *) echo "!! upload failed for $file: unexpected response body: $body" >&2; return 1 ;;
-  esac
+  mkdir -p "$assetsWorkDir/pr-$PR"
+  cp "$file" "$assetsWorkDir/pr-$PR/$name"
+  assetsChanged=true
+  stagedUrl="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${assetsBranch}/pr-${PR}/${name}"
+}
+
+# Commits and pushes everything staged by stage_screenshot. On a push
+# conflict (e.g. a concurrent run for the same PR) it fetches and rebases
+# once before giving up, since the assets branch is otherwise only ever
+# fast-forwarded.
+push_assets_branch() {
+  git -C "$assetsWorkDir" add -A
+  git -C "$assetsWorkDir" commit --quiet -m "Screenshots for PR #$PR ($emulatorApi)"
+  if git -C "$assetsWorkDir" push --quiet origin "HEAD:$assetsBranch" 2>/dev/null; then
+    return 0
+  fi
+  echo "==> Push to $assetsBranch rejected, fetching and rebasing once before retrying" >&2
+  git -C "$assetsWorkDir" fetch --quiet origin "$assetsBranch" \
+    && git -C "$assetsWorkDir" rebase --quiet "origin/$assetsBranch" \
+    && git -C "$assetsWorkDir" push --quiet origin "HEAD:$assetsBranch"
 }
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
@@ -106,9 +138,6 @@ if [ "$PR" = "master" ]; then
   echo "PR is master, nothing to upload"
   oldCommentsList=""
 else
-  repoId=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY" | jq -r .id)
-  echo "repoId=$repoId"
-
   # the last echo fixes a merge to master, because then no such comments exists
   oldCommentsList=$(printf '%s' "$oldCommentsJson" | jq '.[] | (.id |tostring) + "|" + (.body | test("Screenshot differs:.*") | tostring)' || echo "")
   echo "oldCommentsList=$oldCommentsList"
@@ -137,6 +166,8 @@ else
   pwd
   body=""
   COUNTER=0
+  pendingSuccess=()
+  pendingFailure=()
   ls -la
 
   # https://unix.stackexchange.com/a/723909/201876
@@ -151,14 +182,13 @@ else
 
       newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${f}"
       mv "${f}" "$newName"
-      echo "==> Uploading #$COUNTER screenshot=$newName"
-      if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
+      echo "==> Staging #$COUNTER screenshot=$newName"
+      if ! stage_screenshot "$newName" "$newName"; then
         body="$body ${f} Upload failed <br/><br/>"
         continue
       fi
-      echo "==> Screenshot upload successful for $newName -> $uploadUrl"
-      echo "==> Add screenshot commentLine PR=$PR"
-      body="$body ${f}![screenshot]($uploadUrl) <br/><br/>"
+      pendingSuccess+=("${f}![screenshot]($stagedUrl) <br/><br/>")
+      pendingFailure+=("${f} Upload failed <br/><br/>")
     fi
   done
 
@@ -180,14 +210,13 @@ else
 
       newName="${GITHUB_REPOSITORY//\//-}-pr${PR}-${emulatorApi}-${safeName}"
       cp "../$relPath" "$newName"
-      echo "==> Uploading #$COUNTER new screenshot=$newName"
-      if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
+      echo "==> Staging #$COUNTER new screenshot=$newName"
+      if ! stage_screenshot "$newName" "$newName"; then
         body="$body ${relPath} (new) Upload failed <br/><br/>"
         continue
       fi
-      echo "==> New screenshot upload successful for $newName -> $uploadUrl"
-      echo "==> Add new screenshot commentLine PR=$PR"
-      body="$body ${relPath} (new screenshot)<br/>![screenshot]($uploadUrl) <br/><br/>"
+      pendingSuccess+=("${relPath} (new screenshot)<br/>![screenshot]($stagedUrl) <br/><br/>")
+      pendingFailure+=("${relPath} (new) Upload failed <br/><br/>")
     done <<< "$newFilesList"
   else
     echo "no new untracked screenshots found"
@@ -205,23 +234,39 @@ else
 
       newName="$(date +%s).png"
       mv "${f}" "$newName"
-      echo "==> Uploading #$COUNTER screenshot=$newName"
-      if ! uploadUrl=$(upload_to_github "$newName" "$newName"); then
+      echo "==> Staging #$COUNTER screenshot=$newName"
+      if ! stage_screenshot "$newName" "$newName"; then
         body="$body ${f} (error) Upload failed <br/><br/>"
         continue
       fi
-      echo "==> Add error screenshot commentLine PR=$PR"
-      body="$body <br/>${f}<br/>![screenshot]($uploadUrl) <br/><br/>"
+      pendingSuccess+=("<br/>${f}<br/>![screenshot]($stagedUrl) <br/><br/>")
+      pendingFailure+=("${f} (error) Upload failed <br/><br/>")
     done <<< "$errorFiles"
   else
     echo "no error png found"
   fi
 
+  if [ "$assetsChanged" = "true" ]; then
+    echo "==> Pushing screenshots to $assetsBranch"
+    if push_assets_branch; then
+      echo "==> Pushed screenshots to $assetsBranch"
+      for entry in "${pendingSuccess[@]}"; do
+        body="$body $entry"
+      done
+    else
+      echo "!! Failed to push screenshots to $assetsBranch" >&2
+      for entry in "${pendingFailure[@]}"; do
+        body="$body $entry"
+      done
+    fi
+    rm -rf "$assetsWorkDir"
+  fi
+
   if [ ! "$body" == "" ]; then
     echo "==> Post commentLine to $PR"
     echo "==> body=$body"
-    if [ -z "${CLASSIC_TOKEN}" ]; then
-       echo "!! You must provide a \e[31mCLASSIC_TOKEN\e[0m environment variable. Exiting...."
+    if [ -z "${GITHUB_TOKEN}" ]; then
+       echo "!! You must provide a \e[31mGITHUB_TOKEN\e[0m environment variable. Exiting...."
        exit 1
     fi
     curl_gh -X POST https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/$PR/comments -d "{ \"body\" : \"Screenshot differs: emulatorApi=$emulatorApi with $COUNTER screenshot(s)<br/><br/>setpoint (old) | diff | actual screenshot (new)<br/><br/> $body \" }"
