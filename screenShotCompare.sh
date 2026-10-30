@@ -81,6 +81,18 @@ upload_to_github() {
   contentType="image/png"
   maxUploadBytes=9500000
 
+  # A 0-byte (or otherwise unreadable) file means the image that was supposed
+  # to be uploaded was never actually produced - e.g. git-diff-image's
+  # compare/montage (ImageMagick) crashing on the runner, such as a missing
+  # system dylib (dyld abort). Uploading that garbage would just get GitHub's
+  # attachment endpoint to reject it with a confusing "size ... big file"
+  # 422, which looks identical to the real >=10MB case but has nothing to do
+  # with file size. Fail fast here with a clearer diagnostic instead.
+  if [ ! -s "$file" ]; then
+    echo "!! $file is empty or missing, skipping upload (likely a failed image comparison/render on the runner, not an actual file size issue)" >&2
+    return 1
+  fi
+
   # GitHub's attachment endpoint rejects anything >= 10MB. git-diff-image's
   # triptych (old | diff | new) comparison images can exceed that, even
   # though the individual screenshots never do. Re-encode oversized images as
