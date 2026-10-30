@@ -74,17 +74,78 @@ fi
 upload_to_github() {
   local file="$1"
   local name="$2"
-  local response http_status body url
-  local encodedName encodedContentType encodedRepoId
-  encodedName=$(jq -rn --arg v "$name" '$v|@uri')
-  encodedContentType=$(jq -rn --arg v "image/png" '$v|@uri')
+  local response http_status body url uploadFile uploadName contentType fileSize maxUploadBytes
+  local encodedName encodedContentType encodedRepoId tempFile tempImage converter scale
+  uploadFile="$file"
+  uploadName="$name"
+  contentType="image/png"
+  maxUploadBytes=9500000
+
+  # GitHub's attachment endpoint rejects anything >= 10MB. git-diff-image's
+  # triptych (old | diff | new) comparison images can exceed that, even
+  # though the individual screenshots never do. Re-encode oversized images as
+  # JPEG (shrinking further if needed) only for the upload; the original PNG
+  # used for the diff comparison and archived artifacts is left untouched.
+  fileSize=$(wc -c < "$file" | tr -d '[:space:]')
+  if [ "$fileSize" -ge "$maxUploadBytes" ]; then
+    if command -v magick >/dev/null 2>&1; then
+      converter=magick
+    elif command -v convert >/dev/null 2>&1; then
+      converter=convert
+    else
+      echo "!! ImageMagick is required to compress screenshots larger than 9.5 MB" >&2
+      return 1
+    fi
+
+    if ! tempFile=$(mktemp "${TMPDIR:-/tmp}/raspicar-screenshot.XXXXXX"); then
+      echo "!! Could not create a temporary file to compress $file" >&2
+      return 1
+    fi
+    tempImage="${tempFile}.jpg"
+    scale=100
+    while [ "$scale" -ge 10 ]; do
+      if ! "$converter" "$file" -background white -alpha remove -alpha off \
+        -strip -resize "${scale}%" -quality 85 "$tempImage"; then
+        rm -f "$tempFile" "$tempImage"
+        echo "!! Failed to compress screenshot $file" >&2
+        return 1
+      fi
+      fileSize=$(wc -c < "$tempImage" | tr -d '[:space:]')
+      if [ "$fileSize" -lt "$maxUploadBytes" ]; then
+        break
+      fi
+      scale=$((scale - 10))
+    done
+    if [ "$fileSize" -ge "$maxUploadBytes" ]; then
+      rm -f "$tempFile" "$tempImage"
+      echo "!! Compressed screenshot is still too large to upload: $fileSize bytes" >&2
+      return 1
+    fi
+
+    uploadFile="$tempImage"
+    uploadName="${name%.*}.jpg"
+    contentType="image/jpeg"
+    echo "==> Compressed $name from $(wc -c < "$file" | tr -d '[:space:]') to $fileSize bytes" >&2
+  fi
+
+  encodedName=$(jq -rn --arg v "$uploadName" '$v|@uri')
+  encodedContentType=$(jq -rn --arg v "$contentType" '$v|@uri')
   encodedRepoId=$(jq -rn --arg v "$repoId" '$v|@uri')
-  response=$(curl -sS -w '\n%{http_code}' -X POST \
+  if ! response=$(curl -sS -w '\n%{http_code}' -X POST \
     "https://uploads.github.com/user-attachments/assets?name=${encodedName}&content_type=${encodedContentType}&repository_id=${encodedRepoId}" \
     -H "Content-Type: application/octet-stream" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -H "Authorization: token $CLASSIC_TOKEN" \
-    --data-binary "@$file")
+    --data-binary "@$uploadFile"); then
+    if [ -n "$tempImage" ]; then
+      rm -f "$tempFile" "$tempImage"
+    fi
+    echo "!! GitHub screenshot upload request failed for $uploadName" >&2
+    return 1
+  fi
+  if [ -n "$tempImage" ]; then
+    rm -f "$tempFile" "$tempImage"
+  fi
   http_status="${response##*$'\n'}"
   body="${response%$'\n'*}"
   if [ "$http_status" != "200" ] && [ "$http_status" != "201" ]; then
