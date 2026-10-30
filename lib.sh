@@ -11,6 +11,7 @@ function curl_gh() {
     curl \
       --silent \
       --header "Authorization: token $CLASSIC_TOKEN" \
+      --header "X-GitHub-Api-Version: 2022-11-28" \
       "$@"
   else
     err "WARNING: No CLASSIC_TOKEN found. Skipping API call"
