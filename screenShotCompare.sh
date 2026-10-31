@@ -86,11 +86,15 @@ if [[ "$paparazziMode" == true ]]; then
       actual="$failuresDir/$fqcn.png"
       [[ -f "$actual" ]] || continue
 
-      cp "$actual" "$diffFiles/$fqcn-actual.png"
-      cp "$diff" "$diffFiles/$fqcn-diff.png"
+      cp "$actual" "$diffFiles/android-$fqcn-actual.png"
       expected="$paparazziSnapshotsDir/images/$fqcn.png"
       if [[ -f "$expected" ]]; then
-        cp "$expected" "$diffFiles/$fqcn-expected.png"
+        cp "$expected" "$diffFiles/android-$fqcn-expected.png"
+        # Paparazzi's own delta is grey; paint changed pixels red instead.
+        python3 "${0:A:h}/redDiff.py" "$expected" "$actual" "$diffFiles/android-$fqcn-diff.png" \
+          || cp "$diff" "$diffFiles/android-$fqcn-diff.png"
+      else
+        cp "$diff" "$diffFiles/android-$fqcn-diff.png"
       fi
     done
   fi
@@ -118,7 +122,7 @@ if [[ "$iosMode" == true ]]; then
         if [[ "$paparazziMode" == false && "$iosMode" == false ]]; then
           sourceFile="$iosScreenshotsDir/$screen-diff.png"
         fi
-        [[ -f "$sourceFile" ]] && cp "$sourceFile" "$diffFiles/$screen-$suffix.png"
+        [[ -f "$sourceFile" ]] && cp "$sourceFile" "$diffFiles/ios-$screen-$suffix.png"
       done
     done <<< "$iosFailures"
   fi
