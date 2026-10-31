@@ -125,7 +125,7 @@ if [[ "$iosMode" == true ]]; then
       done
     done <<< "$iosFailures"
   fi
-else
+elif [[ "$paparazziMode" == false ]]; then
   ./git-diff-image/install.sh
   echo "==> Run git diff-image with output dir $diffFiles and fuzz $screenshotCompareFuzz%"
   if [ -n "$SCREENSHOT_DEBUG" ]; then
@@ -135,6 +135,10 @@ else
   else
     GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
   fi
+fi
+
+if [[ "$paparazziMode" == true || "$iosMode" == true ]]; then
+  python3 "${0:A:h}/combineComparisons.py" "$diffFiles"
 fi
 
 pwd
