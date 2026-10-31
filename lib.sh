@@ -10,6 +10,8 @@ function curl_gh() {
   if [[ -n "$CLASSIC_TOKEN" ]]; then
     curl \
       --silent \
+      --show-error \
+      --fail-with-body \
       --header "Authorization: token $CLASSIC_TOKEN" \
       --header "X-GitHub-Api-Version: 2022-11-28" \
       "$@"
