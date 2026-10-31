@@ -37,7 +37,7 @@ mkdir $diffFiles
 
 ./git-diff-image/install.sh
 echo "==> Run git diff-image with output dir $diffFiles and fuzz $screenshotCompareFuzz%"
-if [ -n "$DEBUG_INFO" ]; then
+if [ -n "$SCREENSHOT_DEBUG" ]; then
   set -x
   GIT_DIFF_IMAGE_OUTPUT_DIR=$diffFiles GIT_DIFF_IMAGE_FUZZ=$screenshotCompareFuzz git diff-image
   set +x
@@ -174,11 +174,11 @@ upload_to_github() {
 
 echo "==> Delete all old comments, starting with 'Screenshot differs:"
 oldCommentsJson=$(curl_gh -X GET https://api.github.com/repos/"$GITHUB_REPOSITORY"/issues/"$PR"/comments)
-if [ -n "$DEBUG_INFO" ]; then
-  echo "DEBUG_INFO is set and not empty"
+if [ -n "$SCREENSHOT_DEBUG" ]; then
+  echo "SCREENSHOT_DEBUG is set and not empty"
   printf '%s\n' "$oldCommentsJson"
 else
-  echo "DEBUG_INFO is unset or empty"
+  echo "SCREENSHOT_DEBUG is unset or empty"
 fi
 
 if [ "$PR" = "master" ]; then
