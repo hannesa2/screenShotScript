@@ -118,8 +118,7 @@ if [[ "$iosMode" == true ]]; then
           sourceFile="$iosScreenshotsDir/$screen-expected.png"
         elif [[ "$suffix" == "actual" ]]; then
           sourceFile="$iosScreenshotsDir/$screen.png"
-        fi
-        if [[ "$paparazziMode" == false && "$iosMode" == false ]]; then
+        else
           sourceFile="$iosScreenshotsDir/$screen-diff.png"
         fi
         [[ -f "$sourceFile" ]] && cp "$sourceFile" "$diffFiles/ios-$screen-$suffix.png"
